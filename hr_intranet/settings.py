@@ -262,4 +262,4 @@ if not EMAIL_BACKEND:
         EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Public app base URL used in email templates to link back to the frontend
-APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:3000')
+APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://thrive-intranet-ten.vercel.app/login')
