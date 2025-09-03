@@ -20,12 +20,17 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 
-# Allow EB domain and your custom domain if any
-ALLOWED_HOSTS = [
-    'Dvooskid.pythonanywhere.com',
-    'localhost',
-    '127.0.0.1',
-]
+# Allow hosts: read from environment variable HOSTS (comma-separated) or use sensible defaults.
+# Example: HOSTS=dvooskid.pythonanywhere.com,thrive-intranet-ten.vercel.app
+env_hosts = os.environ.get("HOSTS", "").strip()
+if env_hosts:
+    ALLOWED_HOSTS = [h.strip() for h in env_hosts.split(",") if h.strip()]
+else:
+    ALLOWED_HOSTS = [
+        'dvooskid.pythonanywhere.com',
+        'localhost',
+        '127.0.0.1',
+    ]
 
 # Security settings
 SECURE_SSL_REDIRECT = False
@@ -63,12 +68,20 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# Update CORS settings:
-# Only allow all origins in DEBUG/dev. In production set a specific allowed origins list via env var.
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(
-    ",") if os.environ.get("CORS_ALLOWED_ORIGINS") else []
+# CORS settings: allow all origins only in DEBUG. In production, specify allowed origins via
+# env var CORS_ALLOWED_ORIGINS (comma separated) or default to the public frontend URL.
 CORS_ALLOW_CREDENTIALS = True
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGINS = []
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    raw = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+    if raw:
+        CORS_ALLOWED_ORIGINS = [o.strip() for o in raw.split(",") if o.strip()]
+    else:
+        # Default to the known frontend URL in production
+        CORS_ALLOWED_ORIGINS = [os.environ.get("APP_BASE_URL", "https://thrive-intranet-ten.vercel.app")]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
