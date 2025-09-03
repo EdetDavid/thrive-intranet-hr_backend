@@ -1,0 +1,21 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  <p>You're assigning a manager for the following users:</p>
+  <ul>
+    {% for u in users %}
+      <li>{{ u.get_full_name }} ({{ u.username }})</li>
+    {% endfor %}
+  </ul>
+
+  <form method="post" action="">
+    {% csrf_token %}
+    <table>
+      {{ form.as_table }}
+    </table>
+    <input type="submit" value="Apply" class="default">
+    <a href="..">Cancel</a>
+  </form>
+{% endblock %}

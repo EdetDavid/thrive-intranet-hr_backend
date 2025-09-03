@@ -1,0 +1,13 @@
+Thrive Intranet — New Leave Request
+
+Employee: {{ user.get_full_name|default:user.username }} <{{ user.email }}>
+Type: {{ leave.leave_type }}
+Period: {{ leave.start_date }} — {{ leave.end_date }}
+
+Reason:
+{{ leave.reason|default:"(no reason provided)" }}
+
+View the request: https://thrive-intranet-ten.vercel.app/login
+
+--
+This is an automated message from the Thrive HR system.

@@ -1,0 +1,7 @@
+Thrive Intranet — Leave Approved
+
+Hi {{ user.get_full_name|default:user.username }},
+
+Your leave request for {{ leave.leave_type }} ({{ leave.start_date }} — {{ leave.end_date }}) has been approved.
+
+View the request: https://thrive-intranet-ten.vercel.app/login

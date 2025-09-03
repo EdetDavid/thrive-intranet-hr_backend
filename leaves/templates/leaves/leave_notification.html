@@ -1,0 +1,48 @@
+<html>
+  <body style="font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; color:#333; margin:0; padding:20px; background:#f6f9fc;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+            <tr style="background:#0b5cff;">
+              <td style="padding:18px 24px; color:#fff; font-size:18px; font-weight:600;">Thrive Intranet — New Leave Request</td>
+            </tr>
+            <tr>
+              <td style="padding:20px 24px; color:#333;">
+                <p style="margin:0 0 12px 0;">A new leave request has been submitted.</p>
+                <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%; font-size:14px; color:#333;">
+                  <tr>
+                    <td style="padding:6px 0; width:120px; color:#666;"><strong>Employee</strong></td>
+                    <td style="padding:6px 0;">{{ user.get_full_name|default:user.username }} &lt;{{ user.email }}&gt;</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0; color:#666;"><strong>Type</strong></td>
+                    <td style="padding:6px 0;">{{ leave.leave_type }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0; color:#666;"><strong>Period</strong></td>
+                    <td style="padding:6px 0;">{{ leave.start_date }} — {{ leave.end_date }}</td>
+                  </tr>
+                </table>
+
+                <div style="margin-top:14px;">
+                  <div style="color:#666; font-size:13px; margin-bottom:6px;"><strong>Reason</strong></div>
+                  <div style="background:#fafafa; border-left:3px solid #eee; padding:10px 12px; color:#333; border-radius:4px;">{{ leave.reason|default:"(no reason provided)" }}</div>
+                </div>
+
+                <div style="margin-top:18px;">
+                  <a href="https://thrive-intranet-ten.vercel.app/login" style="display:inline-block; background:#0b5cff; color:#fff; padding:10px 16px; text-decoration:none; border-radius:6px; font-weight:600;">View in Thrive Intranet</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 24px; background:#fafafa; color:#666; font-size:12px;">
+                This is an automated notification from Thrive HR. If you believe this was sent in error, contact <strong>HR</strong>.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
