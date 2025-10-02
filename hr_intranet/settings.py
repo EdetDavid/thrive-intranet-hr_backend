@@ -32,6 +32,44 @@ else:
         '127.0.0.1',
     ]
 
+# LOCALHOST override: if the environment variable LOCALHOST is set to a truthy value
+# (true/1/yes) force local-friendly settings useful for development/testing on
+# a developer machine where you want predictable local storage, email backend
+# and database regardless of other environment variables.
+LOCALHOST = os.environ.get(
+    "LOCALHOST", "False").lower() in ("true", "1", "yes")
+if LOCALHOST:
+    # Always enable debug locally when LOCALHOST is set
+    DEBUG = True
+
+    # Allow typical local hostnames
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+
+    # Use a local sqlite DB inside the project dir for localhost testing
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
+        }
+    }
+
+    # Use local filesystem storage for static/media
+    STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
+    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+    STATIC_URL = "/static/"
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+    STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+    # Use console email backend locally unless explicitly overridden
+    if not os.environ.get('EMAIL_BACKEND'):
+        EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+    # Point APP_BASE_URL to local frontend by default
+    APP_BASE_URL = os.environ.get(
+        
+        'APP_BASE_URL', 'http://localhost:3000')
+
 # Security settings
 SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False
@@ -73,7 +111,7 @@ MIDDLEWARE = [
 CORS_ALLOW_CREDENTIALS = True
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
-    CORS_ALLOWED_ORIGINS = []
+    CORS_ALLOWED_ORIGINS = ["http://localhost:3000", ]
 else:
     CORS_ALLOW_ALL_ORIGINS = False
     raw = os.environ.get("CORS_ALLOWED_ORIGINS", "")
@@ -81,8 +119,12 @@ else:
         CORS_ALLOWED_ORIGINS = [o.strip() for o in raw.split(",") if o.strip()]
     else:
         # Default to the known frontend URL in production
-        CORS_ALLOWED_ORIGINS = [os.environ.get("APP_BASE_URL", "https://thrive-intranet-ten.vercel.app")]
+        CORS_ALLOWED_ORIGINS = [os.environ.get(
+            "APP_BASE_URL", "https://thrive-intranet-ten.vercel.app")]
 
+    # Expose Content-Disposition header so frontend JS can read filenames from responses
+    # (useful for downloads). We expose it in all environments; it's safe for local dev.
+    CORS_EXPOSE_HEADERS = ["Content-Disposition"]
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -248,7 +290,8 @@ LOGGING = {
 
 # Email configuration
 # Normalize DEFAULT_FROM_EMAIL (strip optional quotes)
-raw_default_from = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@example.com')
+raw_default_from = os.environ.get(
+    'DEFAULT_FROM_EMAIL', 'thriveholdingswebmail@gmail.com')
 DEFAULT_FROM_EMAIL = raw_default_from.strip('"').strip("'")
 
 # Read SMTP details from env
@@ -262,8 +305,10 @@ if os.environ.get('EMAIL_PORT'):
 
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'False').lower() in ('true', '1', 'yes')
-EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False').lower() in ('true', '1', 'yes')
+EMAIL_USE_TLS = os.environ.get(
+    'EMAIL_USE_TLS', 'False').lower() in ('true', '1', 'yes')
+EMAIL_USE_SSL = os.environ.get(
+    'EMAIL_USE_SSL', 'False').lower() in ('true', '1', 'yes')
 
 # Decide backend: explicit EMAIL_BACKEND env wins, otherwise use SMTP when EMAIL_HOST is provided,
 # fall back to console backend for local development.
@@ -275,4 +320,44 @@ if not EMAIL_BACKEND:
         EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Public app base URL used in email templates to link back to the frontend
-APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://thrive-intranet-ten.vercel.app/login')
+APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:3000')
+
+# --- AWS SES configuration (optional) -------------------------------------
+# Configure AWS SES as the email backend when USE_AWS_SES is truthy or
+# when required AWS credentials are present. This supports both IAM
+# credentials and the django-ses backend.
+USE_AWS_SES = os.environ.get(
+    'USE_AWS_SES', 'False').lower() in ('true', '1', 'yes')
+AWS_SES_ACCESS_KEY_ID = os.environ.get(
+    'AWS_SES_ACCESS_KEY_ID') or os.environ.get('AWS_ACCESS_KEY_ID')
+AWS_SES_SECRET_ACCESS_KEY = os.environ.get(
+    'AWS_SES_SECRET_ACCESS_KEY') or os.environ.get('AWS_SECRET_ACCESS_KEY')
+AWS_SES_REGION_NAME = os.environ.get(
+    'AWS_SES_REGION_NAME') or os.environ.get('AWS_DEFAULT_REGION')
+
+if USE_AWS_SES or (AWS_SES_ACCESS_KEY_ID and AWS_SES_SECRET_ACCESS_KEY and AWS_SES_REGION_NAME):
+    # Prefer an explicit EMAIL_BACKEND env var if provided
+    if not os.environ.get('EMAIL_BACKEND'):
+        EMAIL_BACKEND = 'django_ses.SESBackend'
+
+    # django-ses uses AWS credentials from environment or aws config; set safe fallbacks
+    if AWS_SES_ACCESS_KEY_ID:
+        os.environ.setdefault('AWS_ACCESS_KEY_ID', AWS_SES_ACCESS_KEY_ID)
+    if AWS_SES_SECRET_ACCESS_KEY:
+        os.environ.setdefault('AWS_SECRET_ACCESS_KEY',
+                              AWS_SES_SECRET_ACCESS_KEY)
+    if AWS_SES_REGION_NAME:
+        os.environ.setdefault('AWS_DEFAULT_REGION', AWS_SES_REGION_NAME)
+
+    # Optional SES settings
+    AWS_SES_REGION_NAME = AWS_SES_REGION_NAME
+    AWS_SES_REGION_ENDPOINT = os.environ.get('AWS_SES_REGION_ENDPOINT', '')
+
+    # If EMAIL_HOST_USER not set, use the access key id (helps with some setups)
+    if not EMAIL_HOST_USER:
+        EMAIL_HOST_USER = AWS_SES_ACCESS_KEY_ID or ''
+
+    # If still no DEFAULT_FROM_EMAIL is set, compose one from the AWS account (user can override via env)
+    if not DEFAULT_FROM_EMAIL or DEFAULT_FROM_EMAIL == 'thriveholdingswebmail@gmail.com':
+        DEFAULT_FROM_EMAIL = os.environ.get(
+            'DEFAULT_FROM_EMAIL', f'no-reply@{os.environ.get("AWS_SES_REGION_NAME", "example.com")}')

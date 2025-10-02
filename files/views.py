@@ -157,6 +157,19 @@ class FolderViewSet(viewsets.ModelViewSet):
             zip_buffer, as_attachment=True, filename=f'{folder.name}.zip')
         response['Content-Type'] = 'application/zip'
         response['Content-Disposition'] = f'attachment; filename="{folder.name}.zip"'
+        # Explicit CORS headers to ensure frontend can access Content-Disposition
+        try:
+            origin = request.headers.get('Origin') or request.META.get('HTTP_ORIGIN')
+            if origin:
+                response['Access-Control-Allow-Origin'] = origin
+            else:
+                response['Access-Control-Allow-Origin'] = '*'
+            # Expose filename header to JS
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+            if getattr(__import__('django.conf').conf.settings, 'CORS_ALLOW_CREDENTIALS', False):
+                response['Access-Control-Allow-Credentials'] = 'true'
+        except Exception:
+            pass
         return response
 
 
@@ -226,13 +239,15 @@ class FileViewSet(viewsets.ModelViewSet):
         if not file_obj.file:
             raise Http404("File not found")
         import mimetypes
-
         # Always force PDF headers if file extension is .pdf or content type is pdf
-        file_name = file_obj.file.name.lower()
+        file_name_lower = file_obj.file.name.lower()
         content_type = None
         try:
-            content_type = getattr(file_obj.file, 'content_type', None) or getattr(
-                file_obj.file, 'file', None) and getattr(file_obj.file.file, 'content_type', None)
+            # Try to read any provided content_type metadata first
+            content_type = getattr(file_obj.file, "content_type", None)
+            if not content_type:
+                # If field has an underlying file object with content_type
+                content_type = getattr(getattr(file_obj.file, 'file', None), 'content_type', None)
         except Exception:
             content_type = None
 
@@ -240,23 +255,89 @@ class FileViewSet(viewsets.ModelViewSet):
             guessed, _ = mimetypes.guess_type(file_obj.file.name)
             content_type = guessed or 'application/octet-stream'
 
-        # Force PDF headers
-        if file_name.endswith('.pdf') or (content_type and content_type.startswith('application/pdf')):
-            content_type = 'application/pdf'
-            response = FileResponse(file_obj.file, content_type=content_type)
-            response["Content-Disposition"] = f'inline; filename="{file_obj.name}"'
-            response["Content-Type"] = content_type
-            return response
+        is_pdf = file_name_lower.endswith('.pdf') or (content_type and content_type.startswith('application/pdf'))
+        is_image = content_type and content_type.startswith('image/')
 
-        # Images
-        if content_type.startswith('image/'):
-            response = FileResponse(file_obj.file, content_type=content_type)
-            response["Content-Disposition"] = f'inline; filename="{file_obj.name}"'
-            response["Content-Type"] = content_type
-            return response
+        # Ensure the underlying file is opened for both local and remote storages
+        try:
+            try:
+                file_obj.file.open('rb')
+            except TypeError:
+                # Some storage backends accept open() without mode
+                try:
+                    file_obj.file.open()
+                except Exception:
+                    pass
 
-        # All other files
-        response = FileResponse(file_obj.file, content_type=content_type)
-        response["Content-Disposition"] = f'attachment; filename="{file_obj.name}"'
-        response["Content-Type"] = content_type
-        return response
+            # Determine the actual file-like object to pass to FileResponse
+            file_handle = getattr(file_obj.file, 'file', None) or file_obj.file
+
+            # Seek to start if possible
+            try:
+                file_handle.seek(0)
+            except Exception:
+                pass
+
+            # For PDFs and images we prefer inline viewing; other types should download
+            if is_pdf or is_image:
+                as_attachment = False
+            else:
+                as_attachment = True
+
+            # Use FileResponse helper to set headers correctly; filename param ensures proper Content-Disposition
+            response = FileResponse(
+                file_handle, filename=file_obj.name, as_attachment=as_attachment, content_type=content_type
+            )
+
+            # Add RFC5987 encoded filename* header (UTF-8) so non-ASCII filenames work in many browsers
+            try:
+                from urllib.parse import quote
+                filename_ascii = (file_obj.name.encode('ascii', 'ignore') or b'file').decode()
+                filename_star = "utf-8''" + quote(file_obj.name)
+                disposition_type = 'inline' if not as_attachment else 'attachment'
+                response['Content-Disposition'] = f"{disposition_type}; filename=\"{filename_ascii}\"; filename*=UTF-8''{quote(file_obj.name)}"
+            except Exception:
+                # Fallback to simple header
+                disposition_type = 'inline' if not as_attachment else 'attachment'
+                response['Content-Disposition'] = f'{disposition_type}; filename="{file_obj.name}"'
+
+            # If PDF, explicitly set content type to be safe
+            if is_pdf:
+                response['Content-Type'] = 'application/pdf'
+
+            # Ensure Content-Length is set when possible (helps browsers and frontend handle downloads)
+            try:
+                if getattr(file_obj, 'size', None):
+                    response['Content-Length'] = str(file_obj.size)
+                    # Log size for troubleshooting
+                    try:
+                        print(f"File size for id={file_obj.id}: {file_obj.size}")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Explicit CORS headers to ensure frontend can access Content-Disposition
+            try:
+                origin = request.headers.get('Origin') or request.META.get('HTTP_ORIGIN')
+                if origin:
+                    response['Access-Control-Allow-Origin'] = origin
+                else:
+                    response['Access-Control-Allow-Origin'] = '*'
+                response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+                if getattr(__import__('django.conf').conf.settings, 'CORS_ALLOW_CREDENTIALS', False):
+                    response['Access-Control-Allow-Credentials'] = 'true'
+            except Exception:
+                pass
+
+            # Debug log header info for troubleshooting
+            try:
+                print(f"Serving file id={file_obj.id} name={file_obj.name} content_type={content_type} disposition={response['Content-Disposition']}")
+            except Exception:
+                pass
+
+            return response
+        except Exception as e:
+            # Log and raise 404 for missing/unsupported files
+            print(f"Error serving file {file_obj.id}: {e}")
+            raise Http404("Unable to open file for download")
