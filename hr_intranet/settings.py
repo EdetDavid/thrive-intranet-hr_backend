@@ -68,7 +68,8 @@ if LOCALHOST:
     # Point APP_BASE_URL to local frontend by default
     APP_BASE_URL = os.environ.get(
         
-        'APP_BASE_URL', 'http://localhost:3000')
+        # 'APP_BASE_URL', 'http://localhost:3000')
+        'APP_BASE_URL', 'https://thrive-intranet-ten.vercel.app/')
 
 # Security settings
 SECURE_SSL_REDIRECT = False
@@ -111,7 +112,8 @@ MIDDLEWARE = [
 CORS_ALLOW_CREDENTIALS = True
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
-    CORS_ALLOWED_ORIGINS = ["http://localhost:3000", ]
+    # CORS_ALLOWED_ORIGINS = ["http://localhost:3000", ]
+    CORS_ALLOWED_ORIGINS = ["https://thrive-intranet-ten.vercel.app/", ]
 else:
     CORS_ALLOW_ALL_ORIGINS = False
     raw = os.environ.get("CORS_ALLOWED_ORIGINS", "")
@@ -320,7 +322,8 @@ if not EMAIL_BACKEND:
         EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Public app base URL used in email templates to link back to the frontend
-APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:3000')
+# APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:3000')
+APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://thrive-intranet-ten.vercel.app/')
 
 # --- AWS SES configuration (optional) -------------------------------------
 # Configure AWS SES as the email backend when USE_AWS_SES is truthy or
