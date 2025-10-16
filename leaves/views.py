@@ -29,6 +29,23 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception('Failed to log incoming leave create request for user=%s', getattr(request.user, 'id', None))
 
+        # If HR is creating leave for another user
+        if getattr(request.user, 'is_hr', False) and 'user' in request.data:
+            try:
+                target_user = User.objects.get(id=request.data['user'])
+                # HR creates the leave as approved by default
+                request.data['status'] = 'approved'
+                request.data['approver'] = request.user.id
+            except User.DoesNotExist:
+                return Response(
+                    {'error': 'User not found'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # For non-HR users, always set the leave creator as the user
+            request.data['user'] = request.user.id
+            request.data['status'] = 'pending'
+
         # Proceed with normal creation flow
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -110,7 +127,16 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         return LeaveRequest.objects.filter(user=user).select_related('user', 'approver')
 
     def perform_create(self, serializer):
-        lr = serializer.save(user=self.request.user)
+        # Always assign the correct user for HR-created requests
+        assigned_user = None
+        if getattr(self.request.user, 'is_hr', False) and 'user' in self.request.data:
+            try:
+                assigned_user = User.objects.get(id=self.request.data['user'])
+            except User.DoesNotExist:
+                assigned_user = self.request.user
+        else:
+            assigned_user = self.request.user
+        lr = serializer.save(user=assigned_user)
         # Log creation and resolved recipients for debugging
         try:
             recipients = []
@@ -120,7 +146,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             hr_emails = list(User.objects.filter(is_hr=True).exclude(email__isnull=True).exclude(email__exact='').values_list('email', flat=True))
             recipients.extend(hr_emails)
             recipients = [e for e in dict.fromkeys(recipients) if e]
-            logger.info('LeaveRequest created id=%s user=%s recipients=%s', lr.id, lr.user_id, recipients)
+            logger.info('LeaveRequest created id=%s user=%s (assigned_user=%s) recipients=%s', lr.id, lr.user_id, assigned_user.id if assigned_user else None, recipients)
         except Exception:
             logger.exception('Error logging recipients for leave %s', getattr(lr, 'id', None))
 
