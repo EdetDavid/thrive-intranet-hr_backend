@@ -29,21 +29,23 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception('Failed to log incoming leave create request for user=%s', getattr(request.user, 'id', None))
 
-        # If HR is creating leave for another user
-        if getattr(request.user, 'is_hr', False) and 'user' in request.data:
+        # Accept either 'user' (legacy) or 'user_id' as the write key for the target user.
+        # If HR is creating leave for another user, allow specifying user_id and mark approved.
+        target_user_id = request.data.get('user_id') or request.data.get('user')
+        if getattr(request.user, 'is_hr', False) and target_user_id:
             try:
-                target_user = User.objects.get(id=request.data['user'])
+                target_user = User.objects.get(id=target_user_id)
                 # HR creates the leave as approved by default
                 request.data['status'] = 'approved'
-                request.data['approver'] = request.user.id
+                # set approver_id for serializer write
+                request.data['approver_id'] = request.user.id
+                # keep user_id key for serializer
+                request.data['user_id'] = target_user.id
             except User.DoesNotExist:
-                return Response(
-                    {'error': 'User not found'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            # For non-HR users, always set the leave creator as the user
-            request.data['user'] = request.user.id
+            # For non-HR users, always set the leave creator as the current user
+            request.data['user_id'] = request.user.id
             request.data['status'] = 'pending'
 
         # Proceed with normal creation flow
@@ -54,7 +56,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         # Attempt to send notification inline (for debugging) using same templates as signals
         try:
             # Refresh instance to have all fields
-            lr = LeaveRequest.objects.select_related('user').filter(pk=serializer.instance.id).first()
+            lr = LeaveRequest.objects.select_related('user', 'approver').filter(pk=serializer.instance.id).first()
             if lr:
                 recipients = []
                 manager = getattr(lr.user, 'manager', None)
@@ -127,16 +129,28 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         return LeaveRequest.objects.filter(user=user).select_related('user', 'approver')
 
     def perform_create(self, serializer):
-        # Always assign the correct user for HR-created requests
+        # Always assign the correct user for HR-created requests or use provided user_id
         assigned_user = None
-        if getattr(self.request.user, 'is_hr', False) and 'user' in self.request.data:
+        provided_user_id = self.request.data.get('user_id') or self.request.data.get('user')
+        if getattr(self.request.user, 'is_hr', False) and provided_user_id:
             try:
-                assigned_user = User.objects.get(id=self.request.data['user'])
+                assigned_user = User.objects.get(id=provided_user_id)
             except User.DoesNotExist:
                 assigned_user = self.request.user
         else:
             assigned_user = self.request.user
-        lr = serializer.save(user=assigned_user)
+
+        # If approver_id provided and user is HR, set approver accordingly
+        approver_id = self.request.data.get('approver_id') or self.request.data.get('approver')
+        if approver_id:
+            try:
+                approver_user = User.objects.get(id=approver_id)
+            except User.DoesNotExist:
+                approver_user = None
+        else:
+            approver_user = None
+
+        lr = serializer.save(user=assigned_user, approver=approver_user)
         # Log creation and resolved recipients for debugging
         try:
             recipients = []
