@@ -220,3 +220,37 @@ class UserManagerUpdateView(APIView):
         user.manager = manager
         user.save()
         return Response(UserSerializer(user).data)
+
+
+class UserPasswordChangeView(APIView):
+    """Allow an authenticated user to change their own password.
+
+    Expects JSON: { "old_password": "...", "new_password": "..." }
+    Validates current password and uses Django's password validators for the new password.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+
+        if not old_password or not new_password:
+            return Response({"detail": "Both old_password and new_password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Verify old password
+        if not user.check_password(old_password):
+            return Response({"detail": "Old password is incorrect"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate new password using Django validators
+        from django.contrib.auth.password_validation import validate_password
+        try:
+            validate_password(new_password, user=user)
+        except Exception as e:
+            # return validators messages
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Set and save
+        user.set_password(new_password)
+        user.save()
+        return Response({"detail": "Password changed successfully"})
